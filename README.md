@@ -1,53 +1,80 @@
-CS 280 Introduction to Robotics Lab
-Lacey Bowden
-North Idaho College
-OpenCV
+# AutoDetect-Wildlife
+**CS-280 Robotics Final — North Idaho College, 2026**
 
-Today, we will be working with OpenCV (Open Source Computer Vision): an open-source
-software library for computer vision, machine learning, and image processing. We will learn how
-to use a webcam to take a photo, show a live photo stream, and preprocess images.
-First, ensure you install the library. From your terminal, run:
-pip install opencv-python
-Ensure it is installed by running a python code file with OpenCV imported:
-import cv2
-If that runs with no errors, install was successful.
+Real-time wildlife detection system with two deployment targets: a laptop/desktop path using YOLOv11s and a Raspberry Pi 5 path using a custom INT8-quantized ONNX model — no PyTorch required on the Pi.
 
 ---
 
-## Lab 6 Write-Up
-**John | CS 280 | North Idaho College**
+## Overview
 
-### What I Did
+Wildlife near roads and trails often goes undetected until it's too late. This project builds a low-cost, fully **offline** wildlife detector that runs on a Raspberry Pi 5, purpose-trained on deer, elk, turkey, and moose from real-world datasets.
 
-For this lab I used the instructor's examples (live_feed.py and motion_detector.py) to understand
-how OpenCV works and then wrote my own version in main.py.
+| | Laptop / Desktop | Raspberry Pi 5 |
+|---|---|---|
+| **Model** | YOLOv11s `.pt` | YOLOv11n INT8 ONNX |
+| **Runtime** | PyTorch / Ultralytics | ONNX Runtime (CPU only) |
+| **Camera** | USB webcam | Pi Camera Module |
+| **Input size** | 640×480 | 864×480 (16:9) |
+| **Output** | OpenCV window or MJPEG stream | OpenCV window or terminal |
+| **FPS** | 60–80 FPS | ~3 FPS (INT8, CPU) |
 
-The main things I learned:
+---
 
-- **VideoCapture** lets you grab frames from the webcam in a loop. Each call to `capture.read()`
-  gives you the next frame as a NumPy array.
-- **Color space conversions** change how the image data is represented. BGR is the default in
-  OpenCV (not RGB like I expected). Converting to grayscale drops it down to one channel, which
-  makes it way faster to process.
-- **GaussianBlur** smooths the image so small pixel-level changes (like tiny lighting shifts)
-  don't trigger false motion detections.
-- **Background subtraction** works by saving the very first frame and then using `absdiff()` to
-  compare every new frame against it. Wherever pixels changed a lot, that's where motion happened.
-- **Thresholding + dilation** cleans up the difference image into clear blobs, and then
-  `connectedComponents` lets you find and measure each blob individually.
-- Filtering by area (> 1000 px) ignores tiny noise blobs and only draws boxes around things
-  that are actually moving in a meaningful way.
+## Training Pipeline
 
-### How to Run
+1. **Dataset merging** — Roboflow dataset (deer, elk, turkey, moose, ~3,000 images) + LILA.science Caltech Camera Traps subset merged into a unified structure
+2. **Base training** (`train_wildlife.py`) — YOLOv11s for laptop, YOLOv11n for Pi base weights
+3. **Pi-optimized export** (`train_rpi.py`) — fine-tunes YOLOv11n at 864×480, exports FP32 ONNX, then quantizes to INT8 → `best_int8.onnx` copied to Pi, no PyTorch needed
 
+---
+
+## Running
+
+### Install dependencies
 ```bash
-python main.py
+pip install --user -r requirements.txt
+```
+On Raspberry Pi: swap `opencv-python` for `opencv-python-headless` and add `onnxruntime picamera2`.
+
+### Laptop — live webcam detection
+```bash
+python AutoWildLife.py                   # OpenCV window
+python AutoWildLife.py --headless        # terminal output + MJPEG stream on :8080
 ```
 
-Make sure a webcam is connected. Press `q` or close the window to quit.
-When it starts, it automatically saves one preprocessed frame as `preprocessed_frame.png`.
+### Raspberry Pi — ONNX inference (no PyTorch)
+```bash
+python detect_wildlife.py                # Pi camera live feed
+python detect_wildlife.py --headless     # terminal output only
+python detect_wildlife.py --source video.mp4
+python detect_wildlife.py --source image.jpg
+```
 
-### Deliverables
+Headless terminal output example:
+```
+[14:32:07] Deer 91%  box=(120,88,430,390)  3.2FPS  312ms
+[14:32:08] Elk  78%  box=(50,200,310,480)  3.1FPS  318ms
+```
 
-- `main.py` — Python code file
-- `preprocessed_frame.png` — one preprocessed image (grayscale + Gaussian blur, saved on first frame)
+### Training (desktop with GPU)
+```bash
+python train_wildlife.py          # train both laptop and Pi models
+python train_wildlife.py --rpi-only   # Pi model only (faster)
+python train_rpi.py               # INT8 ONNX export for Pi (run after above)
+```
+
+Press `q` to quit any OpenCV window. `Ctrl+C` to stop headless mode.
+
+---
+
+## Architecture
+
+**Laptop path** (`AutoWildLife.py`): loads `.pt` via Ultralytics, uses CUDA if available. Supports `--headless` to skip display and serve live MJPEG over HTTP on port 8080.
+
+**Raspberry Pi path** (`detect_wildlife.py`): loads INT8 ONNX via `onnxruntime` — zero PyTorch dependency. Uses `picamera2` for the Pi camera, falls back to `cv2.VideoCapture` for USB cameras or video files. Custom letterbox preprocessing and YOLO output postprocessing with NMS.
+
+---
+
+## Tech Stack
+
+`Python` `YOLOv11` `ONNX Runtime` `OpenCV` `Ultralytics` `Raspberry Pi 5` `INT8 Quantization`
