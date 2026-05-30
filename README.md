@@ -67,6 +67,14 @@ Press `q` to quit any OpenCV window. `Ctrl+C` to stop headless mode.
 
 ---
 
+## Detection Features
+
+- **Close-animal warning** — bounding box turns red when a detected animal exceeds 35% of frame height, indicating a likely collision risk (threshold tunable via `WARNING_SIZE_THRESHOLD`)
+- **Class filtering** — COCO pretrained mode restricts output to road-relevant animals; custom model mode trusts all class outputs directly
+- **Smoothed FPS counter** — rolling 20-frame average keeps the display readable
+
+---
+
 ## Architecture
 
 **Laptop path** (`AutoWildLife.py`): loads `.pt` via Ultralytics, uses CUDA if available. Supports `--headless` to skip display and serve live MJPEG over HTTP on port 8080.
